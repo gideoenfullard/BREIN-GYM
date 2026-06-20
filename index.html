@@ -55,11 +55,21 @@
     <!-- React + ReactDOM from CDN (production builds) -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <!-- Babel for in-browser JSX compilation -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Babel vir in-blaaier JSX (vasgepen op v7 = "classic" runtime) -->
+    <script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
+    <script>
+      // Forseer die "classic" JSX-runtime (React.createElement) sodat Babel
+      // NIE import-stellings genereer nie. Die nuwer "automatic" runtime spoeg
+      // `import ... from "react/jsx-runtime"` uit, wat in 'n gewone <script>
+      // breek met "Cannot use import statement outside a module" -> die app
+      // bly dan vashaak op die laai-skerm. Hierdie reel stop dit heeltemal.
+      Babel.registerPreset('react-classic', {
+        presets: [[Babel.availablePresets['react'], { runtime: 'classic' }]]
+      });
+    </script>
     
-    <!-- The app, loaded as JSX module -->
-    <script type="text/babel" data-presets="react" src="app.js"></script>
+    <!-- Die app, gelaai as JSX (classic runtime) -->
+    <script type="text/babel" data-presets="react-classic" src="app.js"></script>
     
     <!-- Service worker registration for offline support -->
     <script>
