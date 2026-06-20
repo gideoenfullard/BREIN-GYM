@@ -675,6 +675,38 @@ const solveLongMultiplication = (a, b) => {
     const bDigit = bDigits[bi];
     const bPlace = N - 1 - bi;  // 0=ones, 1=tens, 2=hundreds
     const bPlaceValue = bDigit * Math.pow(10, bPlace);  // bv. b-syfer 2 in tens place = 20
+    const isFirstPartial = (partials.length === 0);
+    const partialIdxForSteps = partials.length;
+
+    // ─────────────────────────────────────────────────────────────────
+    // SKOOL-STYL "BRING DIE NUL AF" STAP
+    // Vir die 2de partial+: voor enige vermenigvuldiging, moet die kind
+    // eers die '0' (of '00' vir 3de partial, ens.) onderaan op die regte
+    // posisie tik. Dit is hoe skole dit leer: "Want ons maal nou met die
+    // tien-syfer, ons bring eers 'n nul af."
+    // Elke trailing zero kry sy eie stap (regs na links).
+    // ─────────────────────────────────────────────────────────────────
+    if (!isFirstPartial) {
+      for (let zi = 0; zi < bPlace; zi++) {
+        const zeroColPosFromRight = zi;
+        steps.push({
+          type: 'bring_zero',
+          value: 0,
+          writeDigit: 0,
+          bDigit,
+          bPlace,
+          partialColPos: zeroColPosFromRight,
+          partialIdx: partialIdxForSteps,
+          zeroIndex: zi,
+          explanation: `Ons maal nou met ${bDigit} in die ${bPlace === 1 ? 'tien' : bPlace === 2 ? 'honderd' : bPlace + '-plek'}-posisie. Bring eers 'n 0 af.`,
+          hint: bPlace === 1
+            ? `Bring 'n 0 af (ons maal nou met die tien-syfer).`
+            : `Bring 'n 0 af (plek ${zi + 1} van ${bPlace}).`,
+          shortHint: `Bring 0 af`,
+          stepName: `Bring 0 af`
+        });
+      }
+    }
 
     // Per a-syfer (van regs na links), bereken digit-stap met carry
     let carry = 0;
@@ -683,34 +715,30 @@ const solveLongMultiplication = (a, b) => {
       const aPlace = M - 1 - ai;  // 0=ones, 1=tens
       const product = aDigit * bDigit + carry;
       const isLastADigit = (ai === 0);
-      // Vir laaste a-syfer: skryf die HELE product (dalk multi-digit) saam.
-      // Anders: skryf net die ene-syfer en dra die res.
-      const writeValue = isLastADigit ? product : (product % 10);
-      const newCarry = isLastADigit ? 0 : Math.floor(product / 10);
+      // ALTYD net die enes-syfer skryf en dra die res — selfs vir die laaste
+      // a-syfer. Die "voorste" syfers van die finale carry kry hul eie aparte
+      // stappe (een per syfer) sodat die kind nooit gevra word om meer as een
+      // syfer tegelyk te tik nie.
+      const writeValue = product % 10;
+      const newCarry = Math.floor(product / 10);
 
-      // Posisie waar hierdie syfer(s) verskyn in die partial:
-      // bPlace = b-syfer se plek, aPlace = a-syfer se kolom.
-      // Vir laaste a-syfer met multi-digit waarde: partialColPos is die regs-mees plek
-      // (dieselfde formule, want die multi-digit waarde versprei van partialColPos na links)
+      // Posisie waar hierdie syfer verskyn in die partial
       const partialColPos = bPlace + aPlace;
 
-      // Verduideliking
+      // Verduideliking + hint (skool-styl, met carry as deel van die vraag)
       const carryStr = carry > 0 ? ` + ${carry} (dra)` : '';
-      const writeStr = isLastADigit
-        ? `Skryf ${product}.`
-        : `Skryf ${writeValue}${newCarry > 0 ? `, dra ${newCarry}` : ''}.`;
+      const writeStr = newCarry > 0
+        ? `Skryf ${writeValue}, dra ${newCarry}.`
+        : `Skryf ${writeValue}.`;
       const explanation = `${bDigit} × ${aDigit}${carryStr} = ${product}. ${writeStr}`;
       const hint = carry > 0
-        ? `Wat is ${bDigit} × ${aDigit}? Tel dan die ${carry} (dra) by.`
+        ? `Wat is ${bDigit} × ${aDigit} + ${carry} (dra)?`
         : `Wat is ${bDigit} × ${aDigit}?`;
-      const shortHint = `${bDigit} × ${aDigit}${carryStr} = ${product}`;
+      const shortHint = `${bDigit} × ${aDigit}${carryStr} = ${product} → skryf ${writeValue}${newCarry > 0 ? `, dra ${newCarry}` : ''}`;
 
       steps.push({
         type: 'mult_digit',
-        // Wat die kind moet tik: die VOLLEDIGE waarde (writeValue),
-        // want dis hoe skole dit leer skryf
         value: writeValue,
-        // Visuele inligting:
         bDigit,
         aDigit,
         bPlace,
@@ -720,7 +748,7 @@ const solveLongMultiplication = (a, b) => {
         newCarry,
         carryUsed: carry,
         isLastADigit,
-        partialIdx: partials.length,
+        partialIdx: partialIdxForSteps,
         explanation,
         hint,
         shortHint,
@@ -728,6 +756,45 @@ const solveLongMultiplication = (a, b) => {
       });
 
       carry = newCarry;
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // FINALE CARRY na laaste a-syfer: skryf dit syfer-vir-syfer (regs na
+    // links) sodat elke blokkie sy eie stap kry. Bv. as carry = 2 na 3×5
+    // klaar was, en die voorlaaste step het 'n 1 in die enes geskryf, dan
+    // is daar nog 'n "2" wat geskryf moet word as die volgende kolom links.
+    // Vir gewone gevalle (bv. carry=4 na laaste step) is dit een ekstra
+    // syfer. Vir baie groot getalle kan dit dalk twee wees (bv. 99×99).
+    // ─────────────────────────────────────────────────────────────────
+    if (carry > 0) {
+      const carryStr = String(carry);
+      // Skryf van regs na links: die laaste syfer van die carry-string is
+      // die mees-regse en dit kom direk links van die laaste mult_digit step.
+      const lastMultStep = steps[steps.length - 1];
+      const baseCol = lastMultStep.partialColPos + 1;  // een kolom links van laaste skryf
+      // Loop oor carry-syfers van regs na links: laaste karakter van carryStr eerste
+      for (let ci = carryStr.length - 1; ci >= 0; ci--) {
+        const carryDigit = parseInt(carryStr[ci], 10);
+        const offsetFromRight = (carryStr.length - 1 - ci);  // 0 vir die mees-regse
+        const colPos = baseCol + offsetFromRight;
+        steps.push({
+          type: 'mult_final_carry',
+          value: carryDigit,
+          writeDigit: carryDigit,
+          bDigit,
+          bPlace,
+          partialColPos: colPos,
+          partialIdx: partialIdxForSteps,
+          explanation: carryStr.length === 1
+            ? `Die laaste oordra (${carry}) word links voor geskryf.`
+            : `Skryf syfer ${carryDigit} van die finale oordra (${carry}).`,
+          hint: carryStr.length === 1
+            ? `Wat is die finale oordra?`
+            : `Wat is syfer ${offsetFromRight + 1} (van regs) van die oordra ${carry}?`,
+          shortHint: `Finale dra: ${carry}`,
+          stepName: `Skryf ${carryDigit} (finale dra)`
+        });
+      }
     }
 
     // Bereken die volledige partial value
@@ -799,7 +866,37 @@ const buildLongMultGrid = (a, b, solution) => {
 
   const rows = [];
 
-  // Row 0: a (regs-belyn)
+  // ═══════════════════════════════════════════════════════════════════
+  // Row 0: CARRY INDICATOR (klein syfers wat bo geskryf word — soos op papier)
+  // Per mult_digit step met newCarry > 0: die carry-syfer staan een kolom
+  // LINKS van waar die step se eenheid geskryf is (partialColPos + 1), want
+  // dit word by die volgende a-syfer × b-syfer berekening getel.
+  // Ons koppel die carry-cel aan die partialIdx van die step wat dit gegenereer
+  // het, sodat ons by render-tyd kan kies om dit slegs te wys vir die HUIDIGE
+  // b-syfer se pass (sodra die volgende b-syfer se pass begin, vee ons die ou).
+  // ═══════════════════════════════════════════════════════════════════
+  const carryRow = { kind: 'mult_carry_indicator', cells: new Array(cols).fill(null) };
+  solution.steps.forEach((s, idx) => {
+    if (s.type !== 'mult_digit' || !s.newCarry || s.newCarry <= 0) return;
+    // Posisie waar carry sigbaar moet wees: een kolom links van partialColPos
+    const carryColFromRight = s.partialColPos + 1;
+    const carryCol = RIGHT_COL - carryColFromRight;
+    if (carryCol < 0 || carryCol >= cols) return;
+    // As daar reeds 'n carry-cel by hierdie kolom is (van 'n vroeër step in 'n
+    // ander partial pass), oorskryf — die "later" pass se carry vervang die
+    // ouer een visueel, soos op papier waar jy die ou een uitvee.
+    carryRow.cells[carryCol] = {
+      type: 'carry_mark',
+      value: s.newCarry,
+      stepIndex: idx,
+      partialIdx: s.partialIdx,
+      col: carryCol,
+      row: 0
+    };
+  });
+  rows.push(carryRow);
+
+  // Row 1: a (regs-belyn)
   const aRow = { kind: 'a_row', cells: new Array(cols).fill(null) };
   for (let k = 0; k < aStr.length; k++) {
     const col = RIGHT_COL - (aStr.length - 1 - k);
@@ -821,82 +918,56 @@ const buildLongMultGrid = (a, b, solution) => {
   // Underline na b
   rows.push({ kind: 'underline', startCol: RIGHT_COL - Math.max(widthA, widthB) + 1, endCol: RIGHT_COL, cells: new Array(cols).fill(null) });
 
-  // Per partial: 'n rij waar elke cell gekoppel is aan die spesifieke mult_digit stap
-  // wat dit gevul het.
+  // Per partial: 'n rij waar elke cell gekoppel is aan die spesifieke stap
+  // (mult_digit, mult_final_carry, of bring_zero) wat dit gevul het.
   solution.partials.forEach((p, pi) => {
     const pStr = String(p.partialValue);
     const partialDigits = pStr.split('').map(d => parseInt(d, 10));  // links na regs
     const partialLen = partialDigits.length;
     const pRow = { kind: 'partial', cells: new Array(cols).fill(null), partialIdx: pi };
 
-    // Vir hierdie partial: identifiseer al die mult_digit stappe wat dit raak
+    // Vir hierdie partial: kry al die relevante stappe per tipe
+    // (mult_digit + mult_final_carry skryf een syfer elk in 'n spesifieke kolom;
+    //  bring_zero skryf 'n 0 in 'n spesifieke trailing-zero kolom)
     const stepsForPartial = solution.steps
       .map((s, idx) => ({ s, idx }))
-      .filter(({ s }) => s.type === 'mult_digit' && s.partialIdx === pi);
-
-    // Vir elke kolom van die partial, vind welke step die syfer skryf
-    // Posisie binne partial (van regs): 0, 1, 2, ...
-    // Step.partialColPos == k beteken die step skryf 'n syfer in posisie k (regs-na-links).
-    // Vir 'n laaste-a-syfer step met multi-digit waarde (bv. 14), word DIE STAP self versprei
-    //   oor partialColPos en partialColPos+1, ..., met ander digitIndexe.
-    // Maar omdat ons elke cel slegs een step kan toeken, hanteer ons multi-digit deur
-    //   die LAASTE step se digit-versprei tracking (digitIndex en digitTotal).
+      .filter(({ s }) => (s.type === 'mult_digit' || s.type === 'mult_final_carry' || s.type === 'bring_zero')
+                          && s.partialIdx === pi);
 
     for (let k = 0; k < partialLen; k++) {
-      // colPos vanaf regs = k word genormaliseer: posisie k vanaf regs
+      // colPos vanaf regs = posisie k vanaf regs binne hierdie partial
       const colPosFromRight = partialLen - 1 - k;
       const col = RIGHT_COL - (partialLen - 1 - k);
 
-      // Vind die step wat hierdie cel vul
-      // 'n step se direkte target is partialColPos. As die step is "isLastADigit" en sy waarde
-      //   is multi-digit, dan vul dit cells partialColPos, partialColPos+1, ... (na links)
+      // Vind die EEN step wat presies hierdie colPos skryf. Elke step skryf
+      // nou presies EEN syfer (digitTotal altyd 1), so geen span-logika nodig.
       let owningStep = null;
-      let digitIndex = 0;
-      let digitTotal = 1;
-
       for (const { s, idx } of stepsForPartial) {
-        const valStr = String(s.writeDigit);
-        const stepLen = valStr.length;
-        // Step se cells span van partialColPos (regs) tot partialColPos+stepLen-1 (links)
-        const stepRight = s.partialColPos;
-        const stepLeft = s.partialColPos + stepLen - 1;
-        if (colPosFromRight >= stepRight && colPosFromRight <= stepLeft) {
-          owningStep = { s, idx, stepLen, stepRight };
-          // digitIndex (links=0): omgekeerd van colPos
-          digitIndex = stepLeft - colPosFromRight;
-          digitTotal = stepLen;
+        if (s.partialColPos === colPosFromRight) {
+          owningStep = { s, idx };
           break;
         }
       }
 
       if (owningStep) {
+        // Bepaal cel-tipe vir kleur/styling (terwyl die kind se input dieselfde werk)
+        let cellType = 'partial_digit';
+        if (owningStep.s.type === 'bring_zero') cellType = 'partial_placeholder_zero';
+        // mult_final_carry behou 'partial_digit' tipe — kleur en font dieselfde
+
         pRow.cells[col] = {
-          type: 'partial_digit',
+          type: cellType,
           value: partialDigits[k],
           stepIndex: owningStep.idx,
           col, row: rows.length,
-          digitIndex,
-          digitTotal,
+          digitIndex: 0,
+          digitTotal: 1,
           partialIdx: pi,
           colPosFromRight
         };
-      } else {
-        // Geen step vul dit nie — hierdie is 'n placeholder 0 (vir 2de+ partial se trailing zeros)
-        // bv. partial 940 het 'n 0 by colPos=0 wat nie deur 'n mult_digit stap geskryf word nie.
-        // Hierdie cells word gevul wanneer die *eerste* step van hierdie partial begin.
-        // Ons koppel dit aan die eerste step van die partial.
-        const firstStepOfPartial = stepsForPartial[0];
-        if (firstStepOfPartial) {
-          pRow.cells[col] = {
-            type: 'partial_placeholder_zero',
-            value: 0,
-            stepIndex: firstStepOfPartial.idx,
-            col, row: rows.length,
-            partialIdx: pi,
-            colPosFromRight
-          };
-        }
       }
+      // Geen owningStep nie: laat cel leeg (nuwe engine behoort elke partial-syfer
+      // 'n step toe te ken — as 'n cel hier leeg is, is dit 'n bug in die engine).
     }
 
     rows.push(pRow);
@@ -930,11 +1001,23 @@ const buildLongMultGrid = (a, b, solution) => {
 };
 
 // Render-komponent vir die lang-maal grid.
-function LongMultGrid({ grid, fillUpTo, activeStep, currentStep, userInput, wrongFlash, dyslexiaMode }) {
+function LongMultGrid({ grid, fillUpTo, activeStep, currentStep, userInput, wrongFlash, dyslexiaMode, ghostAnim }) {
   const cellW = dyslexiaMode ? 38 : 32;
   const cellH = dyslexiaMode ? 46 : 40;
   const fontSize = dyslexiaMode ? 28 : 24;
   const opSize = dyslexiaMode ? 50 : 44;
+
+  // Bereken top-pixel van 'n gegewe row-index (vir ghost-animasie posisionering)
+  const rowTop = (targetRow) => {
+    let y = 0;
+    for (let r = 0; r < targetRow && r < grid.rows.length; r++) {
+      const row = grid.rows[r];
+      if (row.kind === 'underline') y += 8;
+      else if (row.kind === 'mult_carry_indicator') y += Math.max(20, cellH * 0.55);
+      else y += cellH;
+    }
+    return y;
+  };
 
   // Bepaal welke cells "verbonde" is aan die huidige stap (wys 'n ring om hulle)
   // Vir 'n mult_digit step: highlight die a-cel by aPlace en die b-cel by bPlace
@@ -942,6 +1025,19 @@ function LongMultGrid({ grid, fillUpTo, activeStep, currentStep, userInput, wron
   const isFinalSum = currentStep && currentStep.type === 'final_sum';
   const aHighlight = isMultDigit ? currentStep.aPlace : -1;     // welke aPlace om te ring
   const bHighlight = isMultDigit ? currentStep.bPlace : -1;     // welke bPlace om te ring
+
+  // Watter partial is huidiglik aktief / mees onlangs aktief?
+  // Carry-merke word slegs gewys vir die HUIDIGE b-syfer se pass (sodat ou
+  // carries verdwyn wanneer ons by die volgende partial begin).
+  let currentPartialIdx = -1;
+  if (currentStep && (currentStep.type === 'mult_digit' || currentStep.type === 'bring_zero' || currentStep.type === 'mult_final_carry')) {
+    currentPartialIdx = currentStep.partialIdx;
+  } else if (isFinalSum) {
+    // Op final_sum stap: wys carries van die LAASTE partial (almal klaar gevul)
+    if (grid.solution && grid.solution.partials && grid.solution.partials.length > 0) {
+      currentPartialIdx = grid.solution.partials.length - 1;
+    }
+  }
 
   return (
     <div style={{
@@ -966,6 +1062,49 @@ function LongMultGrid({ grid, fillUpTo, activeStep, currentStep, userInput, wron
               }}></div>
             );
           }
+          // ── CARRY INDICATOR RIJ (klein syfers bo) ──
+          // Slegs cells wat behoort aan die HUIDIGE b-syfer pass se step
+          // word gewys, sodat ou carries verdwyn wanneer ons by 'n nuwe
+          // partial-pass beweeg (soos op papier waar jy die ou een uitvee).
+          if (row.kind === 'mult_carry_indicator') {
+            const carryRowH = Math.max(20, cellH * 0.55);
+            const carryFontSize = Math.max(13, fontSize * 0.55);
+            return (
+              <div key={ri} style={{
+                display: 'flex',
+                height: carryRowH,
+                alignItems: 'center'
+              }}>
+                {row.cells.map((cell, ci) => {
+                  // Slegs wys as: stap is reeds voltooi, EN dit behoort aan
+                  // die huidige partial-pass se b-syfer.
+                  const show = cell
+                    && cell.type === 'carry_mark'
+                    && cell.stepIndex !== undefined
+                    && cell.stepIndex <= fillUpTo
+                    && cell.partialIdx === currentPartialIdx;
+                  return (
+                    <div key={ci} style={{
+                      width: cellW, height: carryRowH,
+                      display: 'flex', alignItems: 'flex-end', justifyContent: 'center'
+                    }}>
+                      {show && (
+                        <span style={{
+                          fontSize: carryFontSize,
+                          fontWeight: 900,
+                          color: '#f59e0b',
+                          lineHeight: 1,
+                          animation: 'newDigitDrop 0.4s ease-out'
+                        }}>
+                          {cell.value}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          }
           // Vir final_sum: highlight die hele partial-rij as een groep
           const isPartialRow = row.kind === 'partial';
 
@@ -986,6 +1125,11 @@ function LongMultGrid({ grid, fillUpTo, activeStep, currentStep, userInput, wron
                 const isPlaceholderZero = cell.type === 'partial_placeholder_zero';
                 const cellFilled = isStatic || (cell.stepIndex !== undefined && cell.stepIndex <= fillUpTo);
                 const isActive = !isStatic && cell.stepIndex === activeStep;
+                // Skool-styl: net die HUIDIGE blokkie is volledig sigbaar, die EEN
+                // volgende stap se blokkie is lig sigbaar (so kind sien daar's nog werk),
+                // en verder vooruit is HEELTEMAL onsigbaar (geen "?" wys nie).
+                const isNextHint = !isStatic && !cellFilled && !isFinalSum && cell.stepIndex === activeStep + 1;
+                const isFutureHidden = !isStatic && !cellFilled && !isActive && !isNextHint && !isFinalSum;
 
                 let bg = 'transparent';
                 let color = '#1f2937';
@@ -996,6 +1140,11 @@ function LongMultGrid({ grid, fillUpTo, activeStep, currentStep, userInput, wron
                   bg = wrongFlash ? '#fee2e2' : '#fef3c7';
                   border = wrongFlash ? '2px solid #ef4444' : '2px solid #f59e0b';
                   if (wrongFlash) color = '#991b1b';
+                } else if (isNextHint) {
+                  // Volgende stap: lig geel, dunner rand, deurskynend
+                  bg = 'rgba(254,243,199,0.4)';
+                  border = '2px dashed rgba(245,158,11,0.35)';
+                  color = 'transparent';
                 } else if (cellFilled) {
                   if (cell.type === 'partial_digit') color = '#3b82f6';
                   else if (cell.type === 'partial_placeholder_zero') color = '#9ca3af';
@@ -1036,6 +1185,10 @@ function LongMultGrid({ grid, fillUpTo, activeStep, currentStep, userInput, wron
                       transition: 'all 0.2s ease'
                     }}>
                       {(() => {
+                        if (isFutureHidden) {
+                          // Verre toekoms-blokkies: niks wys nie — geen "?" nie
+                          return '';
+                        }
                         if (isActive) {
                           const total = cell.digitTotal || 1;
                           const idx = cell.digitIndex !== undefined ? cell.digitIndex : 0;
@@ -1046,6 +1199,10 @@ function LongMultGrid({ grid, fillUpTo, activeStep, currentStep, userInput, wron
                           const padded = inp.padStart(total, ' ');
                           const ch = padded[idx];
                           return ch === ' ' ? '' : ch;
+                        }
+                        if (isNextHint) {
+                          // Lig "?" om die volgende blokkie te wys — kind weet daar's nog werk
+                          return '';
                         }
                         return cellFilled ? cell.value : '';
                       })()}
@@ -1113,6 +1270,36 @@ function LongMultGrid({ grid, fillUpTo, activeStep, currentStep, userInput, wron
               marginTop: 4,
               letterSpacing: 1
             }}>TEL SAAM</div>
+          </div>
+        )}
+
+        {/* GHOST-SYFER ANIMASIE: klein-skuif-na-groot (b-syfer skuif na a-syfer) */}
+        {ghostAnim && (
+          <div
+            key={ghostAnim.key}
+            style={{
+              position: 'absolute',
+              width: cellW,
+              height: cellH,
+              left: 0,
+              top: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: fontSize + 6,
+              fontWeight: 900,
+              color: ghostAnim.color || '#3b82f6',
+              textShadow: `0 0 12px ${ghostAnim.color || '#3b82f6'}66, 0 0 4px white`,
+              pointerEvents: 'none',
+              zIndex: 50,
+              animation: 'ghostSlide 1.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards',
+              '--fromX': `${ghostAnim.fromCol * cellW}px`,
+              '--fromY': `${rowTop(ghostAnim.fromRow)}px`,
+              '--toX': `${ghostAnim.toCol * cellW}px`,
+              '--toY': `${rowTop(ghostAnim.toRow)}px`
+            }}
+          >
+            {ghostAnim.value}
           </div>
         )}
       </div>
@@ -1281,17 +1468,21 @@ const solveLongSub = (a, b) => {
   const working = [...aPadded];
   const borrowedFrom = new Array(maxLen).fill(false);  // is hierdie kolom verminder weens leen vir die kolom regs?
   const borrowedInto = new Array(maxLen).fill(false);  // het hierdie kolom 'n 10 ontvang weens leen?
+  // Hou per kolom-i (waar wasBorrowed) 'n lys van kolom-indekse waar daar geleen IS van
+  // (om die kind te wys watter kolomme verander het toe hierdie kolom geleen het).
+  const borrowChainFor = new Array(maxLen).fill(null).map(() => []);
 
   // Werk regs-na-links
   for (let i = maxLen - 1; i >= 0; i--) {
     if (working[i] < bPadded[i]) {
       // Moet leen by kolom links
-      // Vind eerste kolom links wat nie 0 is nie (dalk meervoudige leen)
+      const chain = [];
       let j = i - 1;
       while (j >= 0 && working[j] === 0) {
-        working[j] = 9;  // word 9 weens chained leen (hierdie kolom kry 10, gee 1)
+        working[j] = 9;
         borrowedFrom[j] = true;
         borrowedInto[j] = true;
+        chain.push(j);
         j--;
       }
       if (j >= 0) {
@@ -1299,7 +1490,9 @@ const solveLongSub = (a, b) => {
         borrowedFrom[j] = true;
         working[i] += 10;
         borrowedInto[i] = true;
+        chain.push(j);
       }
+      borrowChainFor[i] = chain;
     }
   }
 
@@ -1355,6 +1548,9 @@ const solveLongSub = (a, b) => {
       value: writeDigit,
       wasBorrowed,
       lentToRight,
+      // Kolom-indekse wat HIERDIE stap se leen aangeraak het (chain van regs na links)
+      // Leeg as wasBorrowed === false
+      borrowSourceCols: wasBorrowed ? borrowChainFor[i] : [],
       explanation,
       hint,
       shortHint,
@@ -1493,11 +1689,46 @@ const buildLongAddSubGrid = (a, b, solution, opSymbol) => {
 };
 
 // ═══════════════ RENDER (Lang Optel/Aftrek Grid) ═══════════════
-function LongAddSubGrid({ grid, fillUpTo, activeStep, currentStep, userInput, wrongFlash, dyslexiaMode, themeColor }) {
+function LongAddSubGrid({ grid, fillUpTo, activeStep, currentStep, userInput, wrongFlash, dyslexiaMode, themeColor, ghostAnim, borrowAnim, isAdd }) {
   const cellW = dyslexiaMode ? 38 : 32;
   const cellH = dyslexiaMode ? 46 : 40;
   const fontSize = dyslexiaMode ? 28 : 24;
   const opSize = dyslexiaMode ? 50 : 44;
+
+  // Bereken top-pixel vir ghost-posisionering (vir +: ry 0 = carry-rij, korter)
+  const rowTop = (targetRow) => {
+    let y = 0;
+    for (let r = 0; r < targetRow && r < grid.rows.length; r++) {
+      const row = grid.rows[r];
+      if (row.kind === 'underline') y += 8;
+      else if (row.kind === 'carry_indicator') y += Math.max(20, cellH * 0.55);
+      else y += cellH;
+    }
+    return y;
+  };
+
+  // Werk per a-kolom uit OF hierdie kolom 'n leen-deurstreep moet wys (aftrek)
+  // Wys die deurstreep wanneer:
+  //   1. Die leen-stap reeds geprosesseer is (fillUpTo >= revealStepIdx), OF
+  //   2. Die leen-stap is die huidige activeStep (so kind sien dit gebeur in real-time)
+  const solution = grid.solution;
+  const borrowReveal = {};  // { [colIndex]: { originalA, newA } }
+  if (!isAdd && solution && solution.borrowedFrom) {
+    for (let ci = 0; ci < solution.maxLen; ci++) {
+      if (!solution.borrowedFrom[ci]) continue;
+      // Vind die stap wat hierdie kolom se waarde verander het:
+      // dis 'n sub_column step met wasBorrowed === true wie se borrowSourceCols ons ci bevat
+      const revealStepIdx = solution.steps.findIndex(
+        s => s.type === 'sub_column' && s.wasBorrowed && Array.isArray(s.borrowSourceCols) && s.borrowSourceCols.includes(ci)
+      );
+      if (revealStepIdx !== -1 && (fillUpTo >= revealStepIdx || activeStep === revealStepIdx)) {
+        borrowReveal[ci] = {
+          originalA: solution.aDigits[ci],
+          newA: solution.working[ci]
+        };
+      }
+    }
+  }
 
   // Operasie-info vir GROOT teken regs van grid
   let opSymbol = null, opLabel = null, opColor = null;
@@ -1557,6 +1788,15 @@ function LongAddSubGrid({ grid, fillUpTo, activeStep, currentStep, userInput, wr
                 const cellFilled = isStatic || (cell.stepIndex !== undefined && cell.stepIndex <= fillUpTo);
                 const isActive = !isStatic && cell.stepIndex === activeStep;
 
+                // Vir aftrek: kry leen-info vir hierdie a-cel (indien van toepassing)
+                const aBorrowInfo = (!isAdd && cell.type === 'static_a' && borrowReveal[cell.colIndex])
+                  ? borrowReveal[cell.colIndex]
+                  : null;
+                // Flits-animasie: as borrowAnim na hierdie kolom verwys, gebruik dit vir 'n eerste-keer "pop" effek
+                const isJustBorrowed = borrowAnim && cell.type === 'static_a'
+                  && borrowAnim.colInGrid === cell.col
+                  && aBorrowInfo;
+
                 let bg = 'transparent';
                 let color = '#1f2937';
                 let border = '2px solid transparent';
@@ -1606,7 +1846,8 @@ function LongAddSubGrid({ grid, fillUpTo, activeStep, currentStep, userInput, wr
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: rowFontSize, fontWeight, color, background: bg,
                       border, borderRadius: 6,
-                      transition: 'all 0.2s ease'
+                      transition: 'all 0.2s ease',
+                      position: 'relative'
                     }}>
                       {(() => {
                         if (isActive) {
@@ -1620,8 +1861,44 @@ function LongAddSubGrid({ grid, fillUpTo, activeStep, currentStep, userInput, wr
                           const ch = padded[idx];
                           return ch === ' ' ? '' : ch;
                         }
+                        // Vir a-syfers wat geleen het: wys die OU syfer (sal ge-deurstreep word)
+                        if (aBorrowInfo) {
+                          return (
+                            <span style={{ position: 'relative', display: 'inline-block', color: '#9ca3af' }}>
+                              {aBorrowInfo.originalA}
+                              {/* Diagonaal deurstreep */}
+                              <span style={{
+                                position: 'absolute',
+                                left: -2, right: -2, top: '50%',
+                                height: 2,
+                                background: '#ef4444',
+                                transform: 'rotate(-20deg)',
+                                transformOrigin: 'center',
+                                animation: isJustBorrowed ? 'strikeIn 0.4s ease-out forwards' : 'none',
+                                pointerEvents: 'none'
+                              }}></span>
+                            </span>
+                          );
+                        }
                         return cellFilled ? cell.value : '';
                       })()}
+                      {/* Klein nuwe-syfer bo-regs vir geleende kolom */}
+                      {aBorrowInfo && (
+                        <span style={{
+                          position: 'absolute',
+                          top: -4, right: -4,
+                          fontSize: Math.max(11, rowFontSize * 0.5),
+                          fontWeight: 900,
+                          color: '#f59e0b',
+                          background: 'rgba(255,255,255,0.95)',
+                          padding: '0 3px',
+                          borderRadius: 4,
+                          lineHeight: 1.1,
+                          animation: isJustBorrowed ? 'newDigitDrop 0.5s ease-out 0.2s both' : 'none',
+                          pointerEvents: 'none',
+                          zIndex: 3
+                        }}>{aBorrowInfo.newA}</span>
+                      )}
                     </div>
                   </div>
                 );
@@ -1656,6 +1933,36 @@ function LongAddSubGrid({ grid, fillUpTo, activeStep, currentStep, userInput, wr
               marginTop: 4,
               letterSpacing: 1
             }}>{opLabel}</div>
+          </div>
+        )}
+
+        {/* GHOST-SYFER ANIMASIE: skuif syfer skuins (b-syfer na a-syfer, of carry-1 op) */}
+        {ghostAnim && (
+          <div
+            key={ghostAnim.key}
+            style={{
+              position: 'absolute',
+              width: cellW,
+              height: cellH,
+              left: 0,
+              top: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: fontSize + 6,
+              fontWeight: 900,
+              color: ghostAnim.color || themeColor,
+              textShadow: `0 0 12px ${ghostAnim.color || themeColor}66, 0 0 4px white`,
+              pointerEvents: 'none',
+              zIndex: 50,
+              animation: 'ghostSlide 1.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards',
+              '--fromX': `${ghostAnim.fromCol * cellW}px`,
+              '--fromY': `${rowTop(ghostAnim.fromRow)}px`,
+              '--toX': `${ghostAnim.toCol * cellW}px`,
+              '--toY': `${rowTop(ghostAnim.toRow)}px`
+            }}
+          >
+            {ghostAnim.value}
           </div>
         )}
       </div>
@@ -1808,9 +2115,42 @@ const sounds = {
   },
   wrong: (on) => {
     if (!on) return;
-    // Sagte "buzz" - dalende toon
-    playTone(220, 0.15, 'triangle', 0.1);
-    setTimeout(() => playTone(180, 0.2, 'triangle', 0.08), 80);
+    // "BZZZRRRRT" buzzer - lang prrrt met glide-down toon (frekwensie zak terwyl dit speel)
+    const ctx = getAudio();
+    if (!ctx) return;
+    try {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';  // skerper, "buzzy" karakter
+      // Frekwensie glide: begin by 240Hz, sak na 90Hz oor 0.7s
+      osc.frequency.setValueAtTime(240, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(90, ctx.currentTime + 0.7);
+      // Volume: vinnig in, hou, dan uitfade
+      gain.gain.setValueAtTime(0, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.12, ctx.currentTime + 0.02);
+      gain.gain.setValueAtTime(0.12, ctx.currentTime + 0.55);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.75);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.78);
+    } catch {}
+    // 2de laag — lae ondersteunings-toon vir meer "buzz" diepte
+    try {
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.type = 'square';
+      osc2.frequency.setValueAtTime(120, ctx.currentTime);
+      osc2.frequency.exponentialRampToValueAtTime(60, ctx.currentTime + 0.7);
+      gain2.gain.setValueAtTime(0, ctx.currentTime);
+      gain2.gain.linearRampToValueAtTime(0.06, ctx.currentTime + 0.02);
+      gain2.gain.setValueAtTime(0.06, ctx.currentTime + 0.55);
+      gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.75);
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.start();
+      osc2.stop(ctx.currentTime + 0.78);
+    } catch {}
   },
   tick: (on) => {
     if (!on) return;
@@ -1863,6 +2203,96 @@ const sounds = {
   }
 };
 
+// ═══════════════ FEEDBACK EMOJI OVERLAY ═══════════════
+// Hierdie component wys 'n emoji-effek bo-op die skerm wanneer 'n
+// kind 'n vraag REG of VERKEERD het. Word in elke quiz/oefen-skerm
+// langs die {feedback} state geplaas: <FeedbackOverlay feedback={feedback} />
+//   • correct → konfetti reent (🎉🎊✨) - kort fees-effek (~1.2s)
+//   • wrong   → middel-skerm emoji met groot oë (😳) + "Pzzzrrrrt!"
+//                (loop kort - so lank soos die wrong-feedback klank, ~1.5s)
+function FeedbackOverlay({ feedback }) {
+  // CORRECT: 14 konfetti-stukke (mix van emoji's) wat van bo na onder val,
+  // elk met 'n random horisontale drift en rotasie. Position fixed +
+  // pointerEvents none sodat dit nooit klik blokkeer nie.
+  if (feedback === 'correct') {
+    const pieces = [];
+    const emojis = ['🎉', '🎊', '✨', '⭐', '🌟', '🎈'];
+    for (let i = 0; i < 14; i++) {
+      const left = (i / 14) * 100 + (Math.random() * 6 - 3); // versprei oor breedte
+      const driftX = (Math.random() * 80 - 40) + 'px';
+      const rotEnd = (Math.floor(Math.random() * 4) + 3) * 180 + 'deg';
+      const delay = (Math.random() * 0.25).toFixed(2) + 's';
+      const dur = (0.9 + Math.random() * 0.4).toFixed(2) + 's';
+      const size = 28 + Math.floor(Math.random() * 18);
+      pieces.push(
+        <span key={i} style={{
+          position: 'fixed',
+          left: left + '%',
+          top: '-30px',
+          fontSize: size,
+          animation: `confettiFall ${dur} ${delay} ease-in forwards`,
+          ['--driftX']: driftX,
+          ['--rotEnd']: rotEnd,
+          willChange: 'transform, opacity'
+        }}>
+          {emojis[i % emojis.length]}
+        </span>
+      );
+    }
+    return (
+      <div style={{
+        position: 'fixed',
+        top: 0, left: 0, right: 0, bottom: 0,
+        pointerEvents: 'none',
+        zIndex: 9999,
+        overflow: 'hidden'
+      }}>
+        {pieces}
+      </div>
+    );
+  }
+  // WRONG: groot-oog emoji + "Pzzzrrrrt!" in middel van skerm. Nie skerm-vullend
+  // nie - net 'n duidelike flits sodat dit nie te oorweldigend is nie.
+  if (feedback === 'wrong') {
+    return (
+      <div style={{
+        position: 'fixed',
+        top: 0, left: 0, right: 0, bottom: 0,
+        pointerEvents: 'none',
+        zIndex: 9999,
+        overflow: 'hidden'
+      }}>
+        <div style={{
+          position: 'absolute',
+          top: '50%', left: '50%',
+          transform: 'translate(-50%, -50%)',
+          animation: 'wrongFlash 1.5s ease-out forwards',
+          textAlign: 'center'
+        }}>
+          <div style={{ fontSize: 120, lineHeight: 1, filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.25))' }}>😳</div>
+          <div style={{
+            marginTop: 8,
+            fontSize: 28,
+            fontWeight: 900,
+            color: '#dc2626',
+            background: 'rgba(255,255,255,0.92)',
+            padding: '6px 18px',
+            borderRadius: 999,
+            display: 'inline-block',
+            fontFamily: 'Georgia, serif',
+            letterSpacing: 1,
+            animation: 'pzzzPulse 0.35s ease-in-out infinite',
+            boxShadow: '0 4px 14px rgba(220,38,38,0.3)'
+          }}>
+            Pzzzrrrrt!
+          </div>
+        </div>
+      </div>
+    );
+  }
+  return null;
+}
+
 // ═══════════════ MAIN APP ═══════════════
 function BreinGym() {
   const [state, setState] = useState(loadState);
@@ -1873,6 +2303,10 @@ function BreinGym() {
   const [fridayMode, setFridayMode] = useState(null);
   const [pickerContext, setPickerContext] = useState(null); // 'practice', 'sprint', 'friday'
   const [pickedSubject, setPickedSubject] = useState(null);
+  // ── Keuse-modal: wanneer kind 'n long-method vlak kies, vra of hulle eers
+  //    voorbeelde wil sien of direk na vrae wil spring. Stoor die vlak + methodKind
+  //    sodat ons na keuse na die regte view kan navigeer.
+  const [skipChoiceData, setSkipChoiceData] = useState(null); // null of { level, methodKind, subjectId }
 
   useEffect(() => { saveState(state); }, [state]);
 
@@ -1948,25 +2382,144 @@ function BreinGym() {
           soundOn={soundOn}
           onPickLevel={(level, methodKind) => {
             sounds.start(soundOn);
-            if (methodKind === 'paper' && pickedSubject === 'div') {
-              setPracticeData({ subjectId: 'longdiv', level, count: 6, parentSubject: 'div' });
-              setView('longdivDemo');
-            } else if (methodKind === 'paper' && pickedSubject === 'mult') {
-              setPracticeData({ subjectId: 'longmult', level, count: 6, parentSubject: 'mult' });
-              setView('longmultDemo');
-            } else if (methodKind === 'paper' && pickedSubject === 'add') {
-              setPracticeData({ subjectId: 'longadd', level, count: 6, parentSubject: 'add' });
-              setView('longaddDemo');
-            } else if (methodKind === 'paper' && pickedSubject === 'sub') {
-              setPracticeData({ subjectId: 'longsub', level, count: 6, parentSubject: 'sub' });
-              setView('longsubDemo');
+            // Long-method ('paper'): wys eers die keuse-modal — sien voorbeelde of spring direk na vrae
+            if (methodKind === 'paper' && (pickedSubject === 'div' || pickedSubject === 'mult' || pickedSubject === 'add' || pickedSubject === 'sub')) {
+              setSkipChoiceData({ level, methodKind, subjectId: pickedSubject });
             } else {
+              // Gewone praktyk: gaan direk na vrae (geen voorbeelde)
               setPracticeData({ subjectId: pickedSubject, level, count: 15 });
               setView('practice');
             }
           }}
           onBack={() => { sounds.click(soundOn); setView('profile'); }}
         />
+      )}
+      
+      {/* ── Keuse-modal: "Sien Voorbeelde" of "Spring direk na Vrae" voor long-methods ── */}
+      {skipChoiceData && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(15, 23, 42, 0.85)',
+          backdropFilter: 'blur(8px)',
+          zIndex: 10000,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 20,
+        }} onClick={() => { sounds.click(soundOn); setSkipChoiceData(null); }}>
+          <div style={{
+            background: 'linear-gradient(135deg, #1e293b, #0f172a)',
+            border: '2px solid rgba(168, 85, 247, 0.4)',
+            borderRadius: 20,
+            padding: 28,
+            maxWidth: 420,
+            width: '100%',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+          }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ textAlign: 'center', marginBottom: 22 }}>
+              <div style={{ fontSize: 42, marginBottom: 8 }}>🤔</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: 'white', marginBottom: 6 }}>
+                Hoe wil jy begin?
+              </div>
+              <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.65)' }}>
+                Vlak {skipChoiceData.level} · Lang Metode
+              </div>
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <button onClick={() => {
+                sounds.click(soundOn);
+                const { level, subjectId } = skipChoiceData;
+                if (subjectId === 'div') {
+                  setPracticeData({ subjectId: 'longdiv', level, count: 6, parentSubject: 'div' });
+                  setView('longdivDemo');
+                } else if (subjectId === 'mult') {
+                  setPracticeData({ subjectId: 'longmult', level, count: 6, parentSubject: 'mult' });
+                  setView('longmultDemo');
+                } else if (subjectId === 'add') {
+                  setPracticeData({ subjectId: 'longadd', level, count: 6, parentSubject: 'add' });
+                  setView('longaddDemo');
+                } else if (subjectId === 'sub') {
+                  setPracticeData({ subjectId: 'longsub', level, count: 6, parentSubject: 'sub' });
+                  setView('longsubDemo');
+                }
+                setSkipChoiceData(null);
+              }} style={{
+                padding: '16px 20px',
+                background: 'linear-gradient(135deg, #a855f7, #7c3aed)',
+                color: 'white',
+                border: 'none',
+                borderRadius: 14,
+                cursor: 'pointer',
+                fontWeight: 700,
+                fontSize: 16,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                boxShadow: '0 4px 16px rgba(168, 85, 247, 0.4)',
+                textAlign: 'left',
+              }}>
+                <span style={{ fontSize: 28 }}>📘</span>
+                <div style={{ flex: 1 }}>
+                  <div>Sien Voorbeelde</div>
+                  <div style={{ fontSize: 12, fontWeight: 400, opacity: 0.85, marginTop: 2 }}>Kyk 3 voorbeelde, dan oefen</div>
+                </div>
+              </button>
+              
+              <button onClick={() => {
+                sounds.click(soundOn);
+                const { level, subjectId } = skipChoiceData;
+                if (subjectId === 'div') {
+                  setPracticeData({ subjectId: 'longdiv', level, count: 6, parentSubject: 'div' });
+                  setView('longdivPractice');
+                } else if (subjectId === 'mult') {
+                  setPracticeData({ subjectId: 'longmult', level, count: 6, parentSubject: 'mult' });
+                  setView('longmultPractice');
+                } else if (subjectId === 'add') {
+                  setPracticeData({ subjectId: 'longadd', level, count: 6, parentSubject: 'add' });
+                  setView('longaddPractice');
+                } else if (subjectId === 'sub') {
+                  setPracticeData({ subjectId: 'longsub', level, count: 6, parentSubject: 'sub' });
+                  setView('longsubPractice');
+                }
+                setSkipChoiceData(null);
+              }} style={{
+                padding: '16px 20px',
+                background: 'linear-gradient(135deg, #10b981, #059669)',
+                color: 'white',
+                border: 'none',
+                borderRadius: 14,
+                cursor: 'pointer',
+                fontWeight: 700,
+                fontSize: 16,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                boxShadow: '0 4px 16px rgba(16, 185, 129, 0.4)',
+                textAlign: 'left',
+              }}>
+                <span style={{ fontSize: 28 }}>⏭️</span>
+                <div style={{ flex: 1 }}>
+                  <div>Spring direk na Vrae</div>
+                  <div style={{ fontSize: 12, fontWeight: 400, opacity: 0.85, marginTop: 2 }}>Ek weet al hoe, kom ons oefen</div>
+                </div>
+              </button>
+              
+              <button onClick={() => { sounds.click(soundOn); setSkipChoiceData(null); }} style={{
+                padding: '10px',
+                background: 'transparent',
+                color: 'rgba(255,255,255,0.6)',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: 14,
+                marginTop: 4,
+              }}>
+                Kanselleer
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {view === 'longdivDemo' && activeProfile && practiceData && (
@@ -2979,10 +3532,13 @@ function PracticeScreen({ profile, subjectId, level, questionCount, soundOn, onC
   const [current, setCurrent] = useState(0);
   const [input, setInput] = useState('');
   const [inputRem, setInputRem] = useState(''); // vir restant
+  const [activeField, setActiveField] = useState('answer'); // 'answer' of 'rem' - watter veld die numpad in tik
   const [feedback, setFeedback] = useState(null);
   const [questionStart, setQuestionStart] = useState(Date.now());
-  const [timeLeft, setTimeLeft] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(-1);
   const [questionTimeLimit, setQuestionTimeLimit] = useState(15);
+  // ── "Klaar? Begin!" aftel voor eerste vraag — gee kind tyd om te orient ──
+  const [readyCountdown, setReadyCountdown] = useState(3); // 3, 2, 1, dan 0 = begin
   const inputRef = useRef(null);
   const timerRef = useRef(null);
 
@@ -2996,16 +3552,28 @@ function PracticeScreen({ profile, subjectId, level, questionCount, soundOn, onC
     setQuestionStart(Date.now());
   }, []);
 
+  // Aftel "Klaar? 3-2-1 BEGIN!" voor eerste vraag begin
+  // Hierdie gee kind tyd om af te skakel van "kyk voorbeeld" na "doen self".
+  useEffect(() => {
+    if (readyCountdown <= 0) return;
+    if (questions.length === 0) return; // wag tot vrae gegenereer is
+    const t = setTimeout(() => {
+      setReadyCountdown(c => c - 1);
+      sounds.click(soundOn);
+    }, 800);
+    return () => clearTimeout(t);
+  }, [readyCountdown, questions, soundOn]);
+
   // Stel tyd per vraag - aangepas volgens kind se geskiedenis met daardie feit
   useEffect(() => {
-    if (questions[current]) {
+    if (questions[current] && readyCountdown <= 0) {
       const q = questions[current];
       const limit = getTimePerQuestion(profile, factKey(subjectId, q.a, q.b), level);
       setQuestionTimeLimit(limit);
       setTimeLeft(limit);
       setQuestionStart(Date.now());
     }
-  }, [current, questions]);
+  }, [current, questions, readyCountdown]);
 
   useEffect(() => {
     if (inputRef.current) inputRef.current.focus();
@@ -3014,6 +3582,8 @@ function PracticeScreen({ profile, subjectId, level, questionCount, soundOn, onC
   // Aftel timer
   useEffect(() => {
     if (feedback || !questions[current]) return;
+    if (readyCountdown > 0) return; // wag totdat "Klaar? 3-2-1" klaar is
+    if (timeLeft < 0) return; // timer nog nie geïnisialiseer nie (vermy race condition met readyCountdown)
     if (timeLeft <= 0) {
       const q = questions[current];
       sounds.timeUp(soundOn);
@@ -3026,6 +3596,7 @@ function PracticeScreen({ profile, subjectId, level, questionCount, soundOn, onC
         setFeedback(null);
         setInput('');
         setInputRem('');
+        setActiveField('answer');
         if (current + 1 >= questionCount) {
           onComplete({ questions: updated });
         } else {
@@ -3036,7 +3607,7 @@ function PracticeScreen({ profile, subjectId, level, questionCount, soundOn, onC
     }
     timerRef.current = setTimeout(() => setTimeLeft(t => +(t - 0.1).toFixed(1)), 100);
     return () => clearTimeout(timerRef.current);
-  }, [timeLeft, feedback, current, questions]);
+  }, [timeLeft, feedback, current, questions, readyCountdown]);
 
   const q = questions[current];
   if (!q) return <div style={styles.screen}><div style={styles.container}>Laai...</div></div>;
@@ -3065,6 +3636,7 @@ function PracticeScreen({ profile, subjectId, level, questionCount, soundOn, onC
       setFeedback(null);
       setInput('');
       setInputRem('');
+      setActiveField('answer');
       if (current + 1 >= questionCount) {
         onComplete({ questions: updated });
       } else {
@@ -3088,6 +3660,55 @@ function PracticeScreen({ profile, subjectId, level, questionCount, soundOn, onC
   return (
     <div style={styles.screen}>
       <div style={styles.heroBg}></div>
+      <FeedbackOverlay feedback={feedback} />
+      
+      {/* ── "Klaar? 3-2-1 BEGIN!" oorlay — wys voor die EERSTE vraag se timer begin ──
+           Gee kind tyd om af te skakel van voorbeeld-modus na doen-modus. */}
+      {readyCountdown > 0 && questions.length > 0 && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(15, 23, 42, 0.92)',
+          backdropFilter: 'blur(8px)',
+          zIndex: 9999,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 20,
+        }}>
+          <div style={{ fontSize: 28, color: '#fbbf24', fontWeight: 700, letterSpacing: 1 }}>
+            KLAAR?
+          </div>
+          <div style={{
+            fontSize: 120,
+            fontWeight: 800,
+            color: readyCountdown === 1 ? '#10b981' : '#a855f7',
+            textShadow: '0 4px 30px rgba(168, 85, 247, 0.5)',
+            lineHeight: 1,
+            transform: `scale(${1 + (3 - readyCountdown) * 0.05})`,
+            transition: 'all 0.3s ease',
+          }}>
+            {readyCountdown}
+          </div>
+          <div style={{ fontSize: 18, color: 'rgba(255,255,255,0.7)' }}>
+            Maak gereed om te tik!
+          </div>
+          <button onClick={() => setReadyCountdown(0)} style={{
+            marginTop: 30,
+            padding: '10px 24px',
+            background: 'rgba(255,255,255,0.1)',
+            border: '1px solid rgba(255,255,255,0.2)',
+            borderRadius: 8,
+            color: 'white',
+            cursor: 'pointer',
+            fontSize: 14,
+          }}>
+            Spring aftel oor →
+          </button>
+        </div>
+      )}
+      
       <div style={styles.container}>
         <header style={styles.header}>
           <button onClick={onQuit} style={styles.backBtn}>← Stop</button>
@@ -3102,11 +3723,11 @@ function PracticeScreen({ profile, subjectId, level, questionCount, soundOn, onC
         </div>
 
         {/* Adaptiewe tyd-indikator */}
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ ...styles.timerBar, height: 8 }}>
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ ...styles.timerBar, height: 6 }}>
             <div style={{ ...styles.timerFill, width: timePct + '%', background: timerColor }}></div>
           </div>
-          <div style={{ textAlign: 'center', fontSize: 13, color: timerColor, fontWeight: 700, marginTop: 4 }}>
+          <div style={{ textAlign: 'center', fontSize: 12, color: timerColor, fontWeight: 700, marginTop: 2 }}>
             ⏱️ {timeLeft.toFixed(1)}s
           </div>
         </div>
@@ -3137,58 +3758,68 @@ function PracticeScreen({ profile, subjectId, level, questionCount, soundOn, onC
 
           {q.hasRemainder ? (
             <div style={{ display: 'flex', gap: 8, justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' }}>
-              <input
-                ref={inputRef}
-                type="number"
-                inputMode="numeric"
-                value={input}
-                onChange={e => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    if (input && inputRem) handleSubmit();
-                  }
-                }}
-                disabled={!!feedback}
-                style={{ ...styles.answerInput, fontSize: 36, width: 120, opacity: feedback ? 0.5 : 1 }}
-                placeholder="Antw"
-              />
+              <div
+                onClick={() => !feedback && setActiveField('answer')}
+                style={{
+                  ...styles.answerInput,
+                  fontSize: 36,
+                  width: 120,
+                  opacity: feedback ? 0.5 : 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  minHeight: 60,
+                  color: input ? '#1f2937' : '#cbd5e1',
+                  cursor: 'pointer',
+                  borderColor: activeField === 'answer' ? '#3b82f6' : '#cbd5e1',
+                  borderWidth: activeField === 'answer' ? 3 : 2
+                }}>
+                {input || 'Antw'}
+              </div>
               <span style={{ fontSize: 18, color: '#6b7280', fontWeight: 700 }}>res</span>
-              <input
-                type="number"
-                inputMode="numeric"
-                value={inputRem}
-                onChange={e => setInputRem(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && input && inputRem) handleSubmit();
-                }}
-                disabled={!!feedback}
-                style={{ ...styles.answerInput, fontSize: 36, width: 100, opacity: feedback ? 0.5 : 1 }}
-                placeholder="Res"
-              />
+              <div
+                onClick={() => !feedback && setActiveField('rem')}
+                style={{
+                  ...styles.answerInput,
+                  fontSize: 36,
+                  width: 100,
+                  opacity: feedback ? 0.5 : 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  minHeight: 60,
+                  color: inputRem ? '#1f2937' : '#cbd5e1',
+                  cursor: 'pointer',
+                  borderColor: activeField === 'rem' ? '#3b82f6' : '#cbd5e1',
+                  borderWidth: activeField === 'rem' ? 3 : 2
+                }}>
+                {inputRem || 'Res'}
+              </div>
             </div>
           ) : (
-            <input
-              ref={inputRef}
-              type="number"
-              inputMode="numeric"
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={handleKey}
-              disabled={!!feedback}
-              style={{ ...styles.answerInput, fontSize: inputFontSize, opacity: feedback ? 0.5 : 1 }}
-              placeholder="Antwoord..."
-            />
+            <div
+              style={{
+                ...styles.answerInput,
+                fontSize: inputFontSize,
+                opacity: feedback ? 0.5 : 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                minHeight: 64,
+                maxWidth: 240,
+                margin: '0 auto',
+                color: input ? '#1f2937' : '#cbd5e1',
+                cursor: 'default'
+              }}>
+              {input || 'Antwoord...'}
+            </div>
           )}
-
-          <button onClick={handleSubmit} disabled={!input.trim() || (q.hasRemainder && !inputRem.trim()) || !!feedback} style={styles.submitBtn}>
-            Stuur (Enter)
-          </button>
         </div>
 
         <div style={styles.numpad}>
           {[1,2,3,4,5,6,7,8,9].map(n => (
             <button key={n} onClick={() => {
-              if (q.hasRemainder && document.activeElement && document.activeElement.placeholder === 'Res') {
+              if (q.hasRemainder && activeField === 'rem') {
                 setInputRem(inputRem + n);
               } else {
                 setInput(input + n);
@@ -3196,14 +3827,14 @@ function PracticeScreen({ profile, subjectId, level, questionCount, soundOn, onC
             }} disabled={!!feedback} style={styles.numKey}>{n}</button>
           ))}
           <button onClick={() => {
-            if (q.hasRemainder && document.activeElement && document.activeElement.placeholder === 'Res') {
+            if (q.hasRemainder && activeField === 'rem') {
               setInputRem(inputRem.slice(0, -1));
             } else {
               setInput(input.slice(0, -1));
             }
           }} disabled={!!feedback} style={styles.numKey}>⌫</button>
           <button onClick={() => {
-            if (q.hasRemainder && document.activeElement && document.activeElement.placeholder === 'Res') {
+            if (q.hasRemainder && activeField === 'rem') {
               setInputRem(inputRem + '0');
             } else {
               setInput(input + '0');
@@ -3596,6 +4227,7 @@ function LongDivisionDemoScreen({ profile, level, soundOn, onContinue, onSkip })
   });
 
   const PAUSE_MS = 5000; // 5s outo-progress (stadiger vir Gr1)
+  const FIRST_PAUSE_MS = 8000; // 8s eerste stap — kind moet kans kry om som in te neem
 
   const [exampleIdx, setExampleIdx] = useState(0);
   const [stepIdx, setStepIdx] = useState(-1);
@@ -3691,10 +4323,12 @@ function LongDivisionDemoScreen({ profile, level, soundOn, onContinue, onSkip })
   useEffect(() => {
     if (paused) return;
     if (stepIdx >= totalSteps - 1) return;
+    // Eerste stap (stepIdx = -1 → 0) kry 'n langer pause sodat kind die som kan inneem
+    const pauseTime = stepIdx === -1 ? FIRST_PAUSE_MS : PAUSE_MS;
     const timer = setTimeout(() => {
       setStepIdx(s => s + 1);
       sounds.click(soundOn);
-    }, PAUSE_MS);
+    }, pauseTime);
     return () => clearTimeout(timer);
   }, [stepIdx, paused, totalSteps, soundOn]);
 
@@ -4114,6 +4748,7 @@ function LongDivisionScreen({ profile, level, questionCount, soundOn, onComplete
   return (
     <div style={styles.screen}>
       <div style={styles.heroBg}></div>
+      <FeedbackOverlay feedback={feedback} />
       <div style={styles.container}>
         <header style={styles.header}>
           <button onClick={onQuit} style={styles.backBtn}>← Stop</button>
@@ -4199,13 +4834,13 @@ function LongDivisionScreen({ profile, level, questionCount, soundOn, onComplete
           }}></div>
         </div>
 
-        <div style={{ textAlign: 'center', marginBottom: 12, marginTop: 10 }}>
+        <div style={{ textAlign: 'center', marginBottom: 8, marginTop: 4 }}>
           <div style={{ fontSize: 22, fontWeight: 900, color: '#1f2937', fontFamily: 'monospace' }}>
             {current.dividend} ÷ {current.divisor} = ?
           </div>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           <LongDivisionGrid
             grid={current.grid}
             fillUpTo={stepIdx - 1}
@@ -4323,22 +4958,78 @@ function LongMultDemoScreen({ profile, level, soundOn, onContinue, onSkip }) {
     return arr;
   });
 
-  const PAUSE_MS = 5000; // 5s outo-progress (stadiger vir Gr1)
+  const PAUSE_MS = 5000;       // 5s outo-progress vir gewone stappe
+  const FIRST_PAUSE_MS = 8000; // 8s vir EERSTE stap — kind moet kans kry om som in te neem
 
   const [exampleIdx, setExampleIdx] = useState(0);
   const [stepIdx, setStepIdx] = useState(-1);
   const [paused, setPaused] = useState(false);
+  const [ghostAnim, setGhostAnim] = useState(null);
+  // visibleStepIdx loop agter stepIdx aan — sodat die syfer EERS verskyn NA
+  // die ghost-animasie klaar is.
+  const [visibleStepIdx, setVisibleStepIdx] = useState(-1);
 
   const current = problems[exampleIdx];
   const totalSteps = current.solution.steps.length;
 
+  // Trigger ghost-animasie wanneer 'n nuwe stap begin.
+  useEffect(() => {
+    if (stepIdx < 0 || stepIdx >= totalSteps) {
+      setGhostAnim(null);
+      setVisibleStepIdx(stepIdx);
+      return;
+    }
+    const step = current.solution.steps[stepIdx];
+    if (!step) { setGhostAnim(null); setVisibleStepIdx(stepIdx); return; }
+
+    let anim = null;
+
+    if (step.type === 'mult_digit') {
+      // Skuif b-syfer (onder) skuins op-en-regs na die a-syfer (bo) wat in hierdie stap betrokke is.
+      // Dit wys die "× aksie": die b-syfer "ontmoet" die a-syfer.
+      // Grid uitleg: row 0 = a, row 1 = b
+      const RIGHT_COL = current.grid.cols - 1;
+      const aDigits = current.solution.aDigits;
+      const bDigits = current.solution.bDigits;
+      const aCol = RIGHT_COL - step.aPlace;  // aPlace is van regs (0=ene)
+      const bCol = RIGHT_COL - step.bPlace;
+      anim = {
+        fromCol: bCol, fromRow: 1,
+        toCol: aCol, toRow: 0,
+        value: step.bDigit,
+        color: '#3b82f6',
+        key: `mul-${exampleIdx}-${stepIdx}-m`
+      };
+    }
+    // 'final_sum' kry geen ghost — die antwoord kom net direk in
+
+    if (anim) {
+      setGhostAnim(anim);
+      const t = setTimeout(() => {
+        setGhostAnim(null);
+        setVisibleStepIdx(stepIdx);
+      }, 1400);
+      return () => clearTimeout(t);
+    } else {
+      setGhostAnim(null);
+      setVisibleStepIdx(stepIdx);
+    }
+  }, [stepIdx, exampleIdx, totalSteps, current]);
+
+  // Reset visibleStepIdx wanneer 'n nuwe voorbeeld begin
+  useEffect(() => {
+    setVisibleStepIdx(-1);
+  }, [exampleIdx]);
+
   useEffect(() => {
     if (paused) return;
     if (stepIdx >= totalSteps - 1) return;
+    // Eerste stap (stepIdx = -1 → 0) kry 'n langer pause sodat kind die som kan inneem
+    const pauseTime = stepIdx === -1 ? FIRST_PAUSE_MS : PAUSE_MS;
     const timer = setTimeout(() => {
       setStepIdx(s => s + 1);
       sounds.click(soundOn);
-    }, PAUSE_MS);
+    }, pauseTime);
     return () => clearTimeout(timer);
   }, [stepIdx, paused, totalSteps, soundOn]);
 
@@ -4433,12 +5124,13 @@ function LongMultDemoScreen({ profile, level, soundOn, onContinue, onSkip }) {
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 14, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           <LongMultGrid
             grid={current.grid}
-            fillUpTo={stepIdx}
+            fillUpTo={visibleStepIdx}
             activeStep={!finishedExample ? stepIdx + 1 : -1}
             currentStep={!finishedExample ? current.solution.steps[stepIdx + 1] : null}
             userInput=""
             wrongFlash={false}
             dyslexiaMode={profile.dyslexiaMode}
+            ghostAnim={ghostAnim}
           />
         </div>
 
@@ -4682,6 +5374,7 @@ function LongMultScreen({ profile, level, questionCount, soundOn, onComplete, on
   return (
     <div style={styles.screen}>
       <div style={styles.heroBg}></div>
+      <FeedbackOverlay feedback={feedback} />
       <div style={styles.container}>
         <header style={styles.header}>
           <button onClick={onQuit} style={styles.backBtn}>← Stop</button>
@@ -4716,13 +5409,13 @@ function LongMultScreen({ profile, level, questionCount, soundOn, onComplete, on
           }}></div>
         </div>
 
-        <div style={{ textAlign: 'center', marginBottom: 12, marginTop: 10 }}>
+        <div style={{ textAlign: 'center', marginBottom: 8, marginTop: 4 }}>
           <div style={{ fontSize: 22, fontWeight: 900, color: '#1f2937', fontFamily: 'monospace' }}>
             {current.a} × {current.b} = ?
           </div>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           <LongMultGrid
             grid={current.grid}
             fillUpTo={stepIdx - 1}
@@ -4847,21 +5540,148 @@ function LongAddSubDemoScreen({ profile, level, kind, soundOn, onContinue, onSki
     return arr;
   });
 
-  const PAUSE_MS = 5000; // 5s outo-progress (stadiger vir Gr1)
+  const PAUSE_MS = 5000;       // 5s outo-progress
+  const FIRST_PAUSE_MS = 8000; // 8s eerste stap — kind moet kans kry om som in te neem
   const [exampleIdx, setExampleIdx] = useState(0);
   const [stepIdx, setStepIdx] = useState(-1);
   const [paused, setPaused] = useState(false);
+  const [ghostAnim, setGhostAnim] = useState(null);
+  // visibleStepIdx loop agter stepIdx aan
+  const [visibleStepIdx, setVisibleStepIdx] = useState(-1);
+  // borrowAnim wys 'n leen-animasie wanneer 'n sub_column met wasBorrowed begin
+  // (deurstreep die 2, wys nuwe 1 bokant)
+  const [borrowAnim, setBorrowAnim] = useState(null);
 
   const current = problems[exampleIdx];
   const totalSteps = current.solution.steps.length;
 
+  // Trigger ghost-animasie + leen-merk wanneer 'n nuwe stap begin
+  useEffect(() => {
+    if (stepIdx < 0 || stepIdx >= totalSteps) {
+      setGhostAnim(null);
+      setBorrowAnim(null);
+      setVisibleStepIdx(stepIdx);
+      return;
+    }
+    const step = current.solution.steps[stepIdx];
+    if (!step) {
+      setGhostAnim(null);
+      setBorrowAnim(null);
+      setVisibleStepIdx(stepIdx);
+      return;
+    }
+
+    const RIGHT_COL = current.grid.cols - 1;
+    const maxLen = current.solution.maxLen;
+    // Grid rye: vir +: [carry_indicator(0), a(1), b(2), underline, answer(4)]
+    // Vir −: [a(0), b(1), underline, answer(3)]  (geen carry-rij)
+    const HAS_CARRY_ROW = isAdd ? 1 : 0;
+    const A_ROW = HAS_CARRY_ROW;       // a-rij
+    const B_ROW = HAS_CARRY_ROW + 1;   // b-rij
+    // Antwoord-rij is na underline. Tel 'normale' rye (oorslaan underline).
+    // Vir +: rows = [carry, a, b, underline, answer] → answer is op rij 4 (indeks)
+    // Vir −: rows = [a, b, underline, answer] → answer is op rij 3
+    const ANSWER_ROW = isAdd ? 4 : 3;
+    const CARRY_ROW = 0;  // slegs vir +
+
+    let anim = null;
+    let bAnim = null;
+
+    if (step.type === 'add_column') {
+      // Skuif b-syfer (onder) skuins op na a-syfer (bo) in dieselfde kolom.
+      // Wys: "ek tel hierdie twee bymekaar"
+      const col = RIGHT_COL - step.place;  // step.place is van regs (0=ene)
+      anim = {
+        fromCol: col, fromRow: B_ROW,
+        toCol: col, toRow: A_ROW,
+        value: step.bd,
+        color: '#22c55e',
+        key: `add-${exampleIdx}-${stepIdx}-c`
+      };
+    } else if (step.type === 'sub_column') {
+      // Skuif b-syfer (onder) skuins op na a-syfer (bo) in dieselfde kolom
+      const col = RIGHT_COL - step.place;
+      anim = {
+        fromCol: col, fromRow: B_ROW,
+        toCol: col, toRow: A_ROW,
+        value: step.bd,
+        color: '#6366f1',
+        key: `sub-${exampleIdx}-${stepIdx}-c`
+      };
+      // As hierdie kolom geleen het: wys leen-animasie op die kolom LINKS
+      // (deurstreep die oue, wys die nuwe verminderde syfer)
+      if (step.wasBorrowed) {
+        // Vind die kolom waar daar geleen is van.
+        // step.colIndex is die huidige kolom (in a/b-syfer indeks, 0=mees-links).
+        // Leen kom van die eerste nie-nul kolom links — bereken uit working[] state.
+        const myColIdx = step.colIndex;
+        const working = current.solution.working;
+        const aPadded = current.solution.aDigits;
+        // Soek eerste kolom links wat 'n leen-bron is
+        let sourceColIdx = -1;
+        for (let j = myColIdx - 1; j >= 0; j--) {
+          if (working[j] !== aPadded[j]) {
+            sourceColIdx = j;
+            break;
+          }
+        }
+        if (sourceColIdx >= 0) {
+          const sourceColInGrid = RIGHT_COL - (maxLen - 1 - sourceColIdx);
+          bAnim = {
+            colInGrid: sourceColInGrid,
+            row: A_ROW,
+            originalValue: aPadded[sourceColIdx],
+            newValue: working[sourceColIdx],
+            key: `borrow-${exampleIdx}-${stepIdx}`
+          };
+        }
+      }
+    } else if (step.type === 'add_final_carry') {
+      // Skuif die carry-1 van die laaste kolom se carry-mark posisie na die nuwe linker-antwoord-cel
+      const finalAnsCol = RIGHT_COL - (current.solution.answerDigits.length - 1);
+      // Carry-1 vir die laaste stap sit by colInGrid links van die mees-links a/b kolom
+      const lastColIdx = 0;  // mees-links kolom in a/b
+      const lastColInGrid = RIGHT_COL - (maxLen - 1 - lastColIdx);
+      anim = {
+        fromCol: lastColInGrid - 1, fromRow: CARRY_ROW,
+        toCol: finalAnsCol, toRow: ANSWER_ROW,
+        value: step.writeDigit,
+        color: '#f59e0b',
+        key: `addcarry-${exampleIdx}-${stepIdx}`
+      };
+    }
+
+    if (anim || bAnim) {
+      setGhostAnim(anim);
+      setBorrowAnim(bAnim);
+      const t = setTimeout(() => {
+        setGhostAnim(null);
+        // borrowAnim hou ons aan totdat die kolom self ge-render word — anders verdwyn die deurstreep
+        // Maar visibleStepIdx is NA die animasie, so dan is die kolom-syfer reeds gewysig
+        setVisibleStepIdx(stepIdx);
+      }, 1400);
+      return () => clearTimeout(t);
+    } else {
+      setGhostAnim(null);
+      setBorrowAnim(null);
+      setVisibleStepIdx(stepIdx);
+    }
+  }, [stepIdx, exampleIdx, totalSteps, current, isAdd]);
+
+  // Reset wanneer 'n nuwe voorbeeld begin
+  useEffect(() => {
+    setVisibleStepIdx(-1);
+    setBorrowAnim(null);
+  }, [exampleIdx]);
+
   useEffect(() => {
     if (paused) return;
     if (stepIdx >= totalSteps - 1) return;
+    const pauseTime = stepIdx === -1 ? FIRST_PAUSE_MS : PAUSE_MS;
     const timer = setTimeout(() => {
       setStepIdx(s => s + 1);
       sounds.click(soundOn);
-    }, PAUSE_MS);
+    }, pauseTime);
     return () => clearTimeout(timer);
   }, [stepIdx, paused, totalSteps, soundOn]);
 
@@ -4933,13 +5753,16 @@ function LongAddSubDemoScreen({ profile, level, kind, soundOn, onContinue, onSki
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 14, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           <LongAddSubGrid
             grid={current.grid}
-            fillUpTo={stepIdx}
+            fillUpTo={visibleStepIdx}
             activeStep={!finishedExample ? stepIdx + 1 : -1}
             currentStep={!finishedExample ? current.solution.steps[stepIdx + 1] : null}
             userInput=""
             wrongFlash={false}
             dyslexiaMode={profile.dyslexiaMode}
             themeColor={themeColor}
+            ghostAnim={ghostAnim}
+            borrowAnim={borrowAnim}
+            isAdd={isAdd}
           />
         </div>
 
@@ -5152,6 +5975,7 @@ function LongAddSubScreen({ profile, level, kind, questionCount, soundOn, onComp
   return (
     <div style={styles.screen}>
       <div style={styles.heroBg}></div>
+      <FeedbackOverlay feedback={feedback} />
       <div style={styles.container}>
         <header style={styles.header}>
           <button onClick={onQuit} style={styles.backBtn}>← Stop</button>
@@ -5182,13 +6006,13 @@ function LongAddSubScreen({ profile, level, kind, questionCount, soundOn, onComp
           }}></div>
         </div>
 
-        <div style={{ textAlign: 'center', marginBottom: 12, marginTop: 10 }}>
+        <div style={{ textAlign: 'center', marginBottom: 8, marginTop: 4 }}>
           <div style={{ fontSize: 22, fontWeight: 900, color: '#1f2937', fontFamily: 'monospace' }}>
             {current.a} {opSymbol} {current.b} = ?
           </div>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           <LongAddSubGrid
             grid={current.grid}
             fillUpTo={stepIdx - 1}
@@ -5198,6 +6022,7 @@ function LongAddSubScreen({ profile, level, kind, questionCount, soundOn, onComp
             wrongFlash={feedback === 'wrong'}
             dyslexiaMode={profile.dyslexiaMode}
             themeColor={themeColor}
+            isAdd={isAdd}
           />
         </div>
 
@@ -5380,6 +6205,7 @@ function SprintScreen({ profile, subjectId, duration, soundOn, onComplete, onQui
     return (
       <div style={styles.screen}>
         <div style={styles.heroBg}></div>
+        <FeedbackOverlay feedback={feedback} />
         <div style={styles.container}>
           <div style={{ textAlign: 'center', paddingTop: 80 }}>
             <h1 style={{ fontSize: 24, color: '#6b7280', marginBottom: 12, fontWeight: 700 }}>
@@ -5415,6 +6241,7 @@ function SprintScreen({ profile, subjectId, duration, soundOn, onComplete, onQui
     return (
       <div style={styles.screen}>
         <div style={styles.heroBg}></div>
+        <FeedbackOverlay feedback={feedback} />
         <div style={styles.container}>
           <div style={{ textAlign: 'center', paddingTop: 80 }}>
             <div style={{ fontSize: 100, marginBottom: 16 }}>⏱️</div>
@@ -5435,6 +6262,7 @@ function SprintScreen({ profile, subjectId, duration, soundOn, onComplete, onQui
   return (
     <div style={styles.screen}>
       <div style={styles.heroBg}></div>
+      <FeedbackOverlay feedback={feedback} />
       <div style={styles.container}>
         <header style={styles.header}>
           <button onClick={onQuit} style={styles.backBtn}>← Stop</button>
@@ -5474,17 +6302,21 @@ function SprintScreen({ profile, subjectId, duration, soundOn, onComplete, onQui
             </span>
           </div>
 
-          <input
-            ref={inputRef}
-            type="number"
-            inputMode="numeric"
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-            disabled={!!feedback}
-            style={{ ...styles.answerInput, fontSize: 48 }}
-            placeholder="?"
-          />
+          <div
+            style={{
+              ...styles.answerInput,
+              fontSize: 48,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minHeight: 64,
+              maxWidth: 200,
+              margin: '0 auto',
+              color: input ? '#1f2937' : '#cbd5e1',
+              cursor: 'default'
+            }}>
+            {input || '?'}
+          </div>
         </div>
 
         <div style={styles.numpad}>
@@ -5924,6 +6756,7 @@ function PersonalBestGame({ players, subjectId, settings, soundOn, onComplete, o
     return (
       <div style={styles.screen}>
         <div style={styles.heroBg}></div>
+        <FeedbackOverlay feedback={feedback} />
         <div style={styles.container}>
           <div style={{ textAlign: 'center', padding: 40 }}>
             <div style={{ fontSize: 80, marginBottom: 16 }}>🎉</div>
@@ -6001,6 +6834,7 @@ function PersonalBestGame({ players, subjectId, settings, soundOn, onComplete, o
   return (
     <div style={styles.screen}>
       <div style={styles.heroBg}></div>
+      <FeedbackOverlay feedback={feedback} />
       <div style={styles.container}>
         <header style={styles.header}>
           <button onClick={onQuit} style={styles.backBtn}>← Stop</button>
@@ -6030,17 +6864,21 @@ function PersonalBestGame({ players, subjectId, settings, soundOn, onComplete, o
             </span>
           </div>
 
-          <input
-            ref={inputRef}
-            type="number"
-            inputMode="numeric"
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-            disabled={!!feedback}
-            style={{ ...styles.answerInput, fontSize: 48 }}
-            placeholder="?"
-          />
+          <div
+            style={{
+              ...styles.answerInput,
+              fontSize: 48,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minHeight: 64,
+              maxWidth: 200,
+              margin: '0 auto',
+              color: input ? '#1f2937' : '#cbd5e1',
+              cursor: 'default'
+            }}>
+            {input || '?'}
+          </div>
         </div>
 
         <div style={styles.numpad}>
@@ -6065,7 +6903,7 @@ function HandicapGame({ players, subjectId, settings, soundOn, onComplete, onQui
   const [current, setCurrent] = useState(0);
   const [input, setInput] = useState('');
   const [feedback, setFeedback] = useState(null);
-  const [timeLeft, setTimeLeft] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(-1);
   const [totalAllowance, setTotalAllowance] = useState(0);
   const [showHandover, setShowHandover] = useState(false);
   const [score, setScore] = useState(0);
@@ -6104,6 +6942,7 @@ function HandicapGame({ players, subjectId, settings, soundOn, onComplete, onQui
 
   useEffect(() => {
     if (showHandover || !player) return;
+    if (timeLeft < 0) return; // timer nog nie geïnisialiseer nie
     if (timeLeft <= 0) {
       sounds.timeUp(soundOn);
       setResults(r => [...r, { profileId: player.id, allowance: totalAllowance, used: totalAllowance, finishedInTime: false, score }]);
@@ -6119,6 +6958,7 @@ function HandicapGame({ players, subjectId, settings, soundOn, onComplete, onQui
     return (
       <div style={styles.screen}>
         <div style={styles.heroBg}></div>
+        <FeedbackOverlay feedback={feedback} />
         <div style={styles.container}>
           <div style={{ textAlign: 'center', padding: 40 }}>
             <div style={{ fontSize: 80, marginBottom: 16 }}>{lastResult?.finishedInTime ? '🏆' : '⏱️'}</div>
@@ -6208,6 +7048,7 @@ function HandicapGame({ players, subjectId, settings, soundOn, onComplete, onQui
   return (
     <div style={styles.screen}>
       <div style={styles.heroBg}></div>
+      <FeedbackOverlay feedback={feedback} />
       <div style={styles.container}>
         <header style={styles.header}>
           <button onClick={onQuit} style={styles.backBtn}>← Stop</button>
@@ -6244,17 +7085,21 @@ function HandicapGame({ players, subjectId, settings, soundOn, onComplete, onQui
             </span>
           </div>
 
-          <input
-            ref={inputRef}
-            type="number"
-            inputMode="numeric"
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-            disabled={!!feedback}
-            style={{ ...styles.answerInput, fontSize: 48 }}
-            placeholder="?"
-          />
+          <div
+            style={{
+              ...styles.answerInput,
+              fontSize: 48,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minHeight: 64,
+              maxWidth: 200,
+              margin: '0 auto',
+              color: input ? '#1f2937' : '#cbd5e1',
+              cursor: 'default'
+            }}>
+            {input || '?'}
+          </div>
         </div>
 
         <div style={styles.numpad}>
@@ -6326,6 +7171,7 @@ function TeamGame({ players, subjectId, settings, soundOn, onComplete, onQuit })
     return (
       <div style={styles.screen}>
         <div style={styles.heroBg}></div>
+        <FeedbackOverlay feedback={feedback} />
         <div style={styles.container}>
           <div style={{ textAlign: 'center', padding: 40 }}>
             <div style={{ fontSize: 100, marginBottom: 16 }}>{teamWon ? '🏆' : '💪'}</div>
@@ -6377,6 +7223,7 @@ function TeamGame({ players, subjectId, settings, soundOn, onComplete, onQuit })
   return (
     <div style={styles.screen}>
       <div style={styles.heroBg}></div>
+      <FeedbackOverlay feedback={feedback} />
       <div style={styles.container}>
         <header style={styles.header}>
           <button onClick={onQuit} style={styles.backBtn}>← Stop</button>
@@ -6411,17 +7258,21 @@ function TeamGame({ players, subjectId, settings, soundOn, onComplete, onQuit })
             </span>
           </div>
 
-          <input
-            ref={inputRef}
-            type="number"
-            inputMode="numeric"
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-            disabled={!!feedback}
-            style={{ ...styles.answerInput, fontSize: 48 }}
-            placeholder="?"
-          />
+          <div
+            style={{
+              ...styles.answerInput,
+              fontSize: 48,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minHeight: 64,
+              maxWidth: 200,
+              margin: '0 auto',
+              color: input ? '#1f2937' : '#cbd5e1',
+              cursor: 'default'
+            }}>
+            {input || '?'}
+          </div>
         </div>
 
         <div style={styles.numpad}>
@@ -6791,6 +7642,39 @@ const globalStyles = `
     80%  { transform: translateY(-2px) scale(1); opacity: 1; }
     100% { transform: translateY(-12px) scale(0.9); opacity: 0; }
   }
+  @keyframes carryPop {
+    0%   { transform: scale(0); opacity: 0; }
+    50%  { transform: scale(1.4); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  @keyframes strikeIn {
+    0%   { width: 0; opacity: 0; }
+    100% { width: 100%; opacity: 1; }
+  }
+  @keyframes newDigitDrop {
+    0%   { transform: translateY(-14px) scale(0.6); opacity: 0; }
+    60%  { transform: translateY(2px) scale(1.2); opacity: 1; }
+    100% { transform: translateY(0) scale(1); opacity: 1; }
+  }
+  /* ═══════════════ FEEDBACK EMOJI EFFEKTE ═══════════════ */
+  @keyframes confettiFall {
+    0%   { transform: translate(0, -20px) rotate(0deg); opacity: 0; }
+    10%  { opacity: 1; }
+    90%  { opacity: 1; }
+    100% { transform: translate(var(--driftX, 0px), 105vh) rotate(var(--rotEnd, 720deg)); opacity: 0; }
+  }
+  @keyframes wrongFlash {
+    0%   { transform: translate(-50%, -50%) scale(0.4) rotate(-8deg); opacity: 0; }
+    15%  { transform: translate(-50%, -50%) scale(1.15) rotate(4deg); opacity: 1; }
+    30%  { transform: translate(-50%, -50%) scale(1) rotate(-3deg); opacity: 1; }
+    45%  { transform: translate(-50%, -50%) scale(1.05) rotate(2deg); opacity: 1; }
+    75%  { transform: translate(-50%, -50%) scale(1) rotate(0deg); opacity: 1; }
+    100% { transform: translate(-50%, -50%) scale(0.85) rotate(0deg); opacity: 0; }
+  }
+  @keyframes pzzzPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.08); }
+  }
 `;
 
 const styles = {
@@ -6814,7 +7698,7 @@ const styles = {
   container: {
     maxWidth: 900,
     margin: '0 auto',
-    padding: '16px 12px',
+    padding: '8px 6px',
     position: 'relative',
     zIndex: 1
   },
@@ -6822,9 +7706,9 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 24,
+    marginBottom: 10,
     flexWrap: 'wrap',
-    gap: 12
+    gap: 8
   },
   logo: { display: 'flex', alignItems: 'center', gap: 10 },
   logoEmoji: { fontSize: 36, animation: 'float 3s ease-in-out infinite' },
@@ -7143,7 +8027,7 @@ const styles = {
     background: '#e5e7eb',
     borderRadius: 999,
     overflow: 'hidden',
-    marginBottom: 32
+    marginBottom: 12
   },
   progressFill: {
     height: '100%',
@@ -7153,44 +8037,46 @@ const styles = {
   },
   questionBox: {
     background: 'rgba(255,255,255,0.85)',
-    borderRadius: 24,
-    padding: 32,
+    borderRadius: 20,
+    padding: '12px 8px',
     textAlign: 'center',
     boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
     position: 'relative',
-    marginBottom: 20
+    marginBottom: 10
   },
   question: {
     fontWeight: 900,
     fontFamily: 'Georgia, serif',
     color: '#1f2937',
-    margin: '20px 0',
+    margin: '6px 0',
     animation: 'pop 0.4s ease-out'
   },
   feedbackCorrect: {
     position: 'absolute',
-    top: 16, right: 16,
-    fontSize: 32,
+    top: 12, right: 12,
+    fontSize: 28,
     color: '#10b981',
     fontWeight: 900,
     animation: 'pop 0.4s'
   },
   feedbackWrong: {
     position: 'absolute',
-    top: 16, left: '50%',
+    top: 12, left: '50%',
     transform: 'translateX(-50%)',
     background: '#fee2e2',
     color: '#991b1b',
-    padding: '8px 16px',
-    borderRadius: 12,
+    padding: '6px 14px',
+    borderRadius: 10,
     fontWeight: 800,
+    fontSize: 14,
     animation: 'shake 0.4s'
   },
   answerInput: {
-    width: 200,
-    padding: 16,
+    width: '100%',
+    maxWidth: 280,
+    padding: 10,
     border: '3px solid #3b82f6',
-    borderRadius: 16,
+    borderRadius: 14,
     textAlign: 'center',
     fontWeight: 800,
     outline: 'none',
@@ -7198,29 +8084,29 @@ const styles = {
   },
   submitBtn: {
     display: 'block',
-    margin: '20px auto 0',
-    padding: '14px 36px',
+    margin: '8px auto 0',
+    padding: '8px 22px',
     background: '#10b981',
     color: 'white',
     border: 'none',
-    borderRadius: 12,
-    fontSize: 16,
+    borderRadius: 10,
+    fontSize: 14,
     fontWeight: 800
   },
   numpad: {
     display: 'grid',
     gridTemplateColumns: 'repeat(3, 1fr)',
-    gap: 8,
-    maxWidth: 320,
+    gap: 6,
+    maxWidth: 420,
     margin: '0 auto'
   },
   numKey: {
-    padding: 18,
-    fontSize: 22,
+    padding: '8px 0',
+    fontSize: 20,
     fontWeight: 800,
     background: 'rgba(255,255,255,0.85)',
     border: '2px solid rgba(0,0,0,0.06)',
-    borderRadius: 12,
+    borderRadius: 10,
     color: '#1f2937'
   },
   resultHero: { textAlign: 'center', padding: '32px 0' },
