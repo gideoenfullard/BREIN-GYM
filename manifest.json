@@ -1,0 +1,24 @@
+{
+  "name": "Brein Gym",
+  "short_name": "Brein Gym",
+  "description": "Slim leer-app vir kinders en grootmense",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#fef3c7",
+  "theme_color": "#3b82f6",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

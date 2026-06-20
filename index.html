@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="af">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#3b82f6" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Brein Gym" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="description" content="Slim leer-app vir Suid-Afrikaanse kinders Gr 1-7 — leer slim, wen pryse op Vrydae!" />
+    
+    <title>Brein Gym</title>
+    
+    <link rel="manifest" href="manifest.json" />
+    <link rel="icon" type="image/svg+xml" href="icon.svg" />
+    <link rel="apple-touch-icon" href="icon-192.png" />
+    
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+        html, body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            overscroll-behavior: none;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        input, textarea { -webkit-user-select: text; user-select: text; }
+        #root { min-height: 100vh; }
+        
+        /* Loading screen */
+        .loading {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: linear-gradient(135deg, #fef3c7 0%, #fce7f3 50%, #dbeafe 100%);
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            font-family: Georgia, serif;
+            z-index: 9999;
+        }
+        .loading-icon { font-size: 80px; animation: bounce 1.2s ease-in-out infinite; }
+        .loading-title { font-size: 32px; font-weight: 900; color: #1f2937; margin-top: 20px; letter-spacing: 1.5px; }
+        .loading-text { font-size: 14px; color: #6b7280; margin-top: 12px; }
+        @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-20px); } }
+    </style>
+</head>
+<body>
+    <div id="root">
+        <div class="loading">
+            <div class="loading-icon">🧠</div>
+            <div class="loading-title">BREIN GYM</div>
+            <div class="loading-text">Laai...</div>
+        </div>
+    </div>
+    
+    <!-- React + ReactDOM from CDN (production builds) -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Babel for in-browser JSX compilation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- The app, loaded as JSX module -->
+    <script type="text/babel" data-presets="react" src="app.js"></script>
+    
+    <!-- Service worker registration for offline support -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js').catch(err => {
+                    console.log('SW registration failed:', err);
+                });
+            });
+        }
+    </script>
+</body>
+</html>
